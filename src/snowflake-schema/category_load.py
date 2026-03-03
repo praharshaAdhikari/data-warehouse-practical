@@ -1,0 +1,40 @@
+from Config import Config
+from Logger import Logger
+from Variable import Variables
+
+v = Variables()
+v.set("SCRIPT_NAME", "CATEGORY_LOAD")
+v.set("LOG", Logger(v))
+v.set("STG_VIEW", "STG_D_CATEGORY")
+v.set("TMP_TABLE", "TMP_D_CATEGORY")
+v.set("TGT_TABLE", "TGT_D_CATEGORY")
+
+sf = Config(v)
+
+# 1️⃣ Truncate Temporary Table
+truncate_query = f"""
+    TRUNCATE TABLE {v.get('TMP_SCHEMA')}.{v.get('TMP_TABLE')}
+"""
+sf.execute_query(truncate_query)
+
+# 2️⃣ Load Distinct Categories into Temp Table
+temp_query = f"""
+    INSERT INTO {v.get('TMP_SCHEMA')}.{v.get('TMP_TABLE')} (CATEGORY_NAME)
+    SELECT DISTINCT CATEGORY
+    FROM {v.get('STG_SCHEMA')}.{v.get('STG_VIEW')}
+"""
+sf.execute_query(temp_query)
+
+# 3️⃣ Merge into Target Table (Insert Only New Categories)
+merge_query = f"""
+    MERGE INTO {v.get('TGT_SCHEMA')}.{v.get('TGT_TABLE')} AS TGT
+    USING {v.get('TMP_SCHEMA')}.{v.get('TMP_TABLE')} AS TMP
+        ON TGT.CATEGORY_NAME = TMP.CATEGORY_NAME
+    WHEN NOT MATCHED THEN
+        INSERT (CATEGORY_NAME)
+        VALUES (TMP.CATEGORY_NAME);
+"""
+sf.execute_query(merge_query)
+
+# 4️⃣ Close Logger
+v.get('LOG').close()
